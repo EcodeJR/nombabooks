@@ -58,6 +58,26 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/', (req, res) => {
+  res.json({
+    name: 'NombaBooks API',
+    status: 'running',
+    health: '/health',
+    endpoints: {
+      auth: '/zoho/auth',
+      checkout: '/api/checkout/create',
+      webhooks: '/api/webhooks/nomba',
+      refunds: '/api/refunds/initiate',
+      transactions: '/api/transactions',
+      settings: '/api/settings/nomba'
+    }
+  });
+});
+
+app.get('/api', (req, res) => {
+  res.json({ status: 'ok', service: 'NombaBooks API' });
+});
+
 // Raw body parser for webhook signature validation
 // Must be BEFORE json parser for the specific webhook route
 app.use(
