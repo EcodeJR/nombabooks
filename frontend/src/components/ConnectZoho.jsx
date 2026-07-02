@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import client from '../api/client';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 const ConnectZoho = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ const ConnectZoho = () => {
   }, []);
 
   const handleConnect = () => {
-    window.location.href = '/zoho/auth';
+    window.location.href = `${API_BASE_URL}/zoho/auth`;
   };
 
   if (loading) {

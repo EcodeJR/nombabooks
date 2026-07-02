@@ -58,18 +58,24 @@ router.get('/zoho/callback', async (req, res, next) => {
       };
     }
 
-    // Exchange code for tokens
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: process.env.ZOHO_CLIENT_ID,
+      client_secret: process.env.ZOHO_CLIENT_SECRET,
+      redirect_uri: process.env.ZOHO_REDIRECT_URI,
+      code: String(code)
+    });
+
+    // Exchange code for tokens using Zoho's required form-encoded payload
     const response = await axios.post(
       'https://accounts.zoho.com/oauth/v2/token',
+      tokenBody,
       {
-        grant_type: 'authorization_code',
-        client_id: process.env.ZOHO_CLIENT_ID,
-        client_secret: process.env.ZOHO_CLIENT_SECRET,
-        redirect_uri: process.env.ZOHO_REDIRECT_URI,
-        code
-      },
-      {
-        timeout: 10000
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json'
+        }
       }
     );
 
@@ -98,7 +104,17 @@ router.get('/zoho/callback', async (req, res, next) => {
     const frontendUrl = process.env.FRONTEND_URL;
     res.redirect(`${frontendUrl}?zoho_connected=true`);
   } catch (error) {
-    next(error);
+    const zohoMessage =
+      error.response?.data?.error_description ||
+      error.response?.data?.error ||
+      error.message;
+
+    console.error(`[Auth] Zoho callback failed: ${zohoMessage}`);
+
+    next({
+      status: error.response?.status || 500,
+      message: `Zoho OAuth callback failed: ${zohoMessage}`
+    });
   }
 });
 
