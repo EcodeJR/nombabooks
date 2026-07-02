@@ -18,9 +18,13 @@ const validateWebhookSignature = (req, res, next) => {
 
   try {
     // Compute HMAC SHA-256 of raw body using secret
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(req.body || '');
+
     const hash = crypto
       .createHmac('sha256', secret)
-      .update(req.body)
+      .update(rawBody)
       .digest('hex');
 
     if (hash !== signature) {
@@ -35,7 +39,7 @@ const validateWebhookSignature = (req, res, next) => {
 
     // Parse the body for the route handler
     try {
-      req.body = JSON.parse(req.body);
+      req.body = JSON.parse(rawBody.toString('utf8'));
     } catch (e) {
       console.error('[ValidateWebhook] Failed to parse JSON body');
       return next({

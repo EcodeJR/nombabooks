@@ -1,32 +1,63 @@
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-
-/**
- * Nomba service - all Nomba API interactions
- * Handles token caching, checkout creation, transaction verification, refunds, and transfers
- */
+const NombaSettings = require('../models/NombaSettings');
 
 let tokenCache = null;
 let tokenExpiryTime = null;
 
-/**
- * Determine the base URL based on NOMBA_ENV
- */
+const isSandboxEnvironment = () => (process.env.NOMBA_ENV || 'sandbox') === 'sandbox';
+
 const getBaseUrl = () => {
-  const env = process.env.NOMBA_ENV || 'sandbox';
-  return env === 'sandbox' 
-    ? 'https://sandbox.nomba.com' 
+  return isSandboxEnvironment()
+    ? 'https://sandbox.nomba.com'
     : process.env.NOMBA_BASE_URL || 'https://api.nomba.com';
 };
 
-/**
- * Get or refresh Nomba auth token
- * Caches token and only re-fetches when expired
- */
-const getNombaToken = async () => {
-  const now = Date.now();
+const getNombaCredentials = async () => {
+  const envClientId = process.env.NOMBA_CLIENT_ID || '';
+  const envClientSecret = process.env.NOMBA_CLIENT_SECRET || '';
+  const envAccountId = process.env.NOMBA_ACCOUNT_ID || '';
 
-  // Return cached token if still valid
+  if (envClientId && envClientSecret && envAccountId) {
+    return {
+      clientId: envClientId,
+      clientSecret: envClientSecret,
+      accountId: envAccountId
+    };
+  }
+
+  const savedSettings = await NombaSettings.findOne();
+
+  if (!savedSettings) {
+    throw new Error('Nomba settings are not configured. Save them in the dashboard first.');
+  }
+
+  return {
+    clientId: savedSettings.clientId,
+    clientSecret: savedSettings.clientSecret,
+    accountId: savedSettings.accountId
+  };
+};
+
+const getAuthHeaders = async () => {
+  if (isSandboxEnvironment()) {
+    return { 'Content-Type': 'application/json' };
+  }
+
+  const token = await getNombaToken();
+  return {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+};
+
+const getNombaToken = async () => {
+  if (isSandboxEnvironment()) {
+    console.log('[Nomba] Sandbox environment detected; skipping token issuance');
+    return null;
+  }
+
+  const now = Date.now();
   if (tokenCache && tokenExpiryTime && now < tokenExpiryTime) {
     console.log('[Nomba] Using cached token');
     return tokenCache;
@@ -34,11 +65,13 @@ const getNombaToken = async () => {
 
   try {
     const baseUrl = getBaseUrl();
+    const credentials = await getNombaCredentials();
+
     const response = await axios.post(
       `${baseUrl}/v1/auth/token/issue`,
       {
-        client_id: process.env.NOMBA_CLIENT_ID,
-        client_secret: process.env.NOMBA_CLIENT_SECRET
+        client_id: credentials.clientId,
+        client_secret: credentials.clientSecret
       },
       {
         timeout: 10000,
@@ -46,42 +79,35 @@ const getNombaToken = async () => {
       }
     );
 
-    const { token, expiresIn } = response.data;
+    const responseData = response.data?.data || response.data;
+    const token = responseData?.token || responseData?.access_token;
+    const expiresIn = responseData?.expiresIn || responseData?.expires_in || 3600;
 
     if (!token) {
       throw new Error('No token received from Nomba');
     }
 
-    // Cache token (expiry in milliseconds, reduced by 1 minute buffer)
     tokenCache = token;
-    tokenExpiryTime = now + (expiresIn * 1000) - 60000;
+    tokenExpiryTime = now + (Number(expiresIn) * 1000) - 60000;
 
     console.log('[Nomba] Token obtained and cached');
     return token;
   } catch (error) {
-    const message = error.response?.data?.message || error.message;
+    const message = error.response?.data?.message || error.response?.data?.description || error.message;
     console.error(`[Nomba] Token fetch failed: ${message}`);
     throw new Error(`Failed to get Nomba token: ${message}`);
   }
 };
 
-/**
- * Create a checkout order on Nomba
- */
-const createCheckoutOrder = async ({
-  amount,
-  customerEmail,
-  invoiceId,
-  callbackUrl
-}) => {
+const createCheckoutOrder = async ({ amount, customerEmail, invoiceId, callbackUrl }) => {
   try {
     if (!amount || !customerEmail || !invoiceId || !callbackUrl) {
       throw new Error('Missing required parameters: amount, customerEmail, invoiceId, callbackUrl');
     }
 
-    const token = await getNombaToken();
     const baseUrl = getBaseUrl();
     const orderReference = uuidv4();
+    const headers = await getAuthHeaders();
 
     const response = await axios.post(
       `${baseUrl}/v1/checkout/order`,
@@ -96,82 +122,63 @@ const createCheckoutOrder = async ({
       },
       {
         timeout: 10000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       }
     );
 
-    const checkoutData = response.data;
+    const checkoutData = response.data?.data || response.data;
 
-    if (!checkoutData.checkoutLink) {
+    if (!checkoutData?.checkoutLink) {
       throw new Error('No checkout link received from Nomba');
     }
 
-    console.log(
-      `[Nomba] Checkout order created: ${orderReference}`
-    );
+    console.log(`[Nomba] Checkout order created: ${orderReference}`);
 
     return {
       checkoutLink: checkoutData.checkoutLink,
       orderReference
     };
   } catch (error) {
-    const message = error.response?.data?.message || error.message;
+    const message = error.response?.data?.message || error.response?.data?.description || error.message;
     console.error(`[Nomba] Create checkout failed: ${message}`);
     throw new Error(`Failed to create Nomba checkout: ${message}`);
   }
 };
 
-/**
- * Verify transaction status
- */
-const verifyTransaction = async (merchantTxRef) => {
+const verifyTransaction = async merchantTxRef => {
   try {
     if (!merchantTxRef) {
       throw new Error('merchantTxRef is required');
     }
 
-    const token = await getNombaToken();
     const baseUrl = getBaseUrl();
+    const headers = await getAuthHeaders();
 
     const response = await axios.get(
-      `${baseUrl}/v1/transactions/accounts?merchantTxRef=${encodeURIComponent(
-        merchantTxRef
-      )}`,
+      `${baseUrl}/v1/transactions/accounts?merchantTxRef=${encodeURIComponent(merchantTxRef)}`,
       {
         timeout: 10000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       }
     );
 
-    console.log(
-      `[Nomba] Transaction verified: ${merchantTxRef}`
-    );
-
+    console.log(`[Nomba] Transaction verified: ${merchantTxRef}`);
     return response.data;
   } catch (error) {
-    const message = error.response?.data?.message || error.message;
+    const message = error.response?.data?.message || error.response?.data?.description || error.message;
     console.error(`[Nomba] Verify transaction failed: ${message}`);
     throw new Error(`Failed to verify Nomba transaction: ${message}`);
   }
 };
 
-/**
- * Initiate a refund
- */
 const initiateRefund = async ({ transactionId, amount, reason }) => {
   try {
     if (!transactionId || !amount) {
       throw new Error('Missing required parameters: transactionId, amount');
     }
 
-    const token = await getNombaToken();
     const baseUrl = getBaseUrl();
+    const headers = await getAuthHeaders();
 
     const response = await axios.post(
       `${baseUrl}/v1/refunds/initiate`,
@@ -182,42 +189,27 @@ const initiateRefund = async ({ transactionId, amount, reason }) => {
       },
       {
         timeout: 10000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       }
     );
 
-    console.log(
-      `[Nomba] Refund initiated for transaction: ${transactionId}`
-    );
-
+    console.log(`[Nomba] Refund initiated for transaction: ${transactionId}`);
     return response.data;
   } catch (error) {
-    const message = error.response?.data?.message || error.message;
+    const message = error.response?.data?.message || error.response?.data?.description || error.message;
     console.error(`[Nomba] Initiate refund failed: ${message}`);
     throw new Error(`Failed to initiate Nomba refund: ${message}`);
   }
 };
 
-/**
- * Transfer funds to a bank account
- */
-const transferToBank = async ({
-  amount,
-  accountNumber,
-  bankCode,
-  accountName,
-  narration
-}) => {
+const transferToBank = async ({ amount, accountNumber, bankCode, accountName, narration }) => {
   try {
     if (!amount || !accountNumber || !bankCode) {
       throw new Error('Missing required parameters: amount, accountNumber, bankCode');
     }
 
-    const token = await getNombaToken();
     const baseUrl = getBaseUrl();
+    const headers = await getAuthHeaders();
 
     const response = await axios.post(
       `${baseUrl}/v1/transfers/bank`,
@@ -230,20 +222,14 @@ const transferToBank = async ({
       },
       {
         timeout: 10000,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       }
     );
 
-    console.log(
-      `[Nomba] Transfer initiated to ${accountNumber}`
-    );
-
+    console.log(`[Nomba] Transfer initiated to ${accountNumber}`);
     return response.data;
   } catch (error) {
-    const message = error.response?.data?.message || error.message;
+    const message = error.response?.data?.message || error.response?.data?.description || error.message;
     console.error(`[Nomba] Transfer to bank failed: ${message}`);
     throw new Error(`Failed to transfer to bank: ${message}`);
   }

@@ -11,6 +11,27 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
+  const loadSettings = async () => {
+    try {
+      const response = await client.get('/api/settings/nomba');
+
+      setNombaConfig({
+        clientId: response.data.clientId || '',
+        clientSecret: '',
+        accountId: response.data.accountId || ''
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error.response?.data?.error || error.message
+      });
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setNombaConfig(prev => ({
@@ -25,16 +46,24 @@ const Settings = () => {
       setLoading(true);
       setMessage(null);
 
-      // Note: This endpoint would need to be implemented in the backend
-      // For now, we just show the settings UI
+      if (!nombaConfig.clientId.trim() || !nombaConfig.accountId.trim()) {
+        throw new Error('Client ID and Account ID are required');
+      }
+
+      await client.post('/api/settings/nomba', {
+        clientId: nombaConfig.clientId,
+        clientSecret: nombaConfig.clientSecret,
+        accountId: nombaConfig.accountId
+      });
+
       setMessage({
-        type: 'info',
-        text: 'Settings UI ready. Backend endpoint for saving Nomba config needs to be implemented.'
+        type: 'success',
+        text: 'Nomba settings saved successfully.'
       });
     } catch (err) {
       setMessage({
         type: 'error',
-        text: err.message
+        text: err.response?.data?.error || err.message
       });
     } finally {
       setLoading(false);
@@ -98,7 +127,7 @@ const Settings = () => {
                   value={nombaConfig.clientSecret}
                   onChange={handleChange}
                   className="mt-1 w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="••••••••"
+                  placeholder="Leave blank to keep existing secret"
                 />
               </div>
 
@@ -117,8 +146,8 @@ const Settings = () => {
               </div>
 
               <p className="text-sm text-gray-600">
-                ℹ️ These settings are stored in your backend .env file. Use the
-                settings UI for reference only.
+                ℹ️ These settings are saved in MongoDB and used by the backend
+                when environment variables are not present.
               </p>
 
               <button

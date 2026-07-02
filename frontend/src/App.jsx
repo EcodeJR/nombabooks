@@ -5,6 +5,7 @@ import Settings from './pages/Settings';
 function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [connected, setConnected] = useState(false);
+  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
   return (
     <div>
@@ -35,7 +36,7 @@ function App() {
               </button>
             </div>
             <div className="text-sm text-gray-400">
-              Backend: http://localhost:3000
+              Backend: {apiBaseUrl}
             </div>
           </div>
         </div>

@@ -17,7 +17,7 @@ const router = express.Router();
  * 4. Push slow operations to retry queue
  */
 router.post(
-  '/api/webhooks/nomba',
+  '/',
   validateWebhookSignature,
   async (req, res, next) => {
     try {

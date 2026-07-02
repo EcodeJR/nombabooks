@@ -14,6 +14,7 @@ const checkoutRoutes = require('./routes/checkout');
 const webhookRoutes = require('./routes/webhooks');
 const refundRoutes = require('./routes/refunds');
 const transactionRoutes = require('./routes/transactions');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 
@@ -59,7 +60,7 @@ app.get('/health', (req, res) => {
 
 // Raw body parser for webhook signature validation
 // Must be BEFORE json parser for the specific webhook route
-app.post(
+app.use(
   '/api/webhooks/nomba',
   express.raw({ type: 'application/json' }),
   webhookRoutes
@@ -79,6 +80,7 @@ app.use(
 // API Routes
 app.use(authRoutes);
 app.use(checkoutRoutes);
+app.use(settingsRoutes);
 app.use(refundRoutes);
 app.use(transactionRoutes);
 
