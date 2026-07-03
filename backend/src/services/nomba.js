@@ -40,9 +40,6 @@ const getNombaCredentials = async () => {
 };
 
 const getAuthHeaders = async () => {
-  if (isSandboxEnvironment()) {
-    return { 'Content-Type': 'application/json' };
-  }
 
   const token = await getNombaToken();
   return {
@@ -52,10 +49,6 @@ const getAuthHeaders = async () => {
 };
 
 const getNombaToken = async () => {
-  if (isSandboxEnvironment()) {
-    console.log('[Nomba] Sandbox environment detected; skipping token issuance');
-    return null;
-  }
 
   const now = Date.now();
   if (tokenCache && tokenExpiryTime && now < tokenExpiryTime) {
@@ -71,7 +64,8 @@ const getNombaToken = async () => {
       `${baseUrl}/v1/auth/token/issue`,
       {
         client_id: credentials.clientId,
-        client_secret: credentials.clientSecret
+        client_secret: credentials.clientSecret,
+        accountId: credentials.accountId
       },
       {
         timeout: 10000,
