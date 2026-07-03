@@ -28,18 +28,21 @@ const getValidAccessToken = async () => {
     if (tokenDoc.expiresAt <= expiryThreshold) {
       console.log('[Zoho] Token expiring soon, refreshing...');
 
-      const response = await axios.post(
+    const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: process.env.ZOHO_CLIENT_ID,
+        client_secret: process.env.ZOHO_CLIENT_SECRET,
+        refresh_token: tokenDoc.refreshToken
+    });
+
+        const response = await axios.post(
         'https://accounts.zoho.com/oauth/v2/token',
+        params.toString(),
         {
-          grant_type: 'refresh_token',
-          client_id: process.env.ZOHO_CLIENT_ID,
-          client_secret: process.env.ZOHO_CLIENT_SECRET,
-          refresh_token: tokenDoc.refreshToken
-        },
-        {
-          timeout: 10000
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000
         }
-      );
+        );
 
       const { access_token, expires_in } = response.data;
 
@@ -77,7 +80,7 @@ const getInvoice = async (invoiceId) => {
     const orgId = process.env.ZOHO_ORGANIZATION_ID;
 
     const response = await axios.get(
-      `https://books.zoho.com/api/v3/invoices/${invoiceId}?organization_id=${orgId}`,
+      `https://www.zohoapis.com/books/v3/invoices/${invoiceId}?organization_id=${orgId}`,
       {
         timeout: 10000,
         headers: {
@@ -130,7 +133,7 @@ const createInvoice = async ({
     });
 
     const response = await axios.post(
-      `https://books.zoho.com/api/v3/invoices?organization_id=${orgId}`,
+      `https://www.zohoapis.com/books/v3/invoices?organization_id=${orgId}`,
       {
         customer_id: contact.contact_id,
         line_items: [
@@ -172,7 +175,7 @@ const getOrCreateContact = async ({ email, name }) => {
 
     // Try to find existing contact
     const searchResponse = await axios.get(
-      `https://books.zoho.com/api/v3/contacts?organization_id=${orgId}&email=${encodeURIComponent(
+      `https://www.zohoapis.com/books/v3/contacts?organization_id=${orgId}&email=${encodeURIComponent(
         email
       )}`,
       {
@@ -194,7 +197,7 @@ const getOrCreateContact = async ({ email, name }) => {
 
     // Create new contact
     const createResponse = await axios.post(
-      `https://books.zoho.com/api/v3/contacts?organization_id=${orgId}`,
+      `https://www.zohoapis.com/books/v3/contacts?organization_id=${orgId}`,
       {
         contact_name: name,
         email
@@ -231,20 +234,26 @@ const markInvoicePaid = async ({
     if (!invoiceId || !amount || !transactionId) {
       throw new Error('Missing required parameters: invoiceId, amount, transactionId');
     }
+    const invoice = await getInvoice(invoiceId);
 
     const token = await getValidAccessToken();
     const orgId = process.env.ZOHO_ORGANIZATION_ID;
 
     const response = await axios.post(
-      `https://books.zoho.com/api/v3/customerpayments?organization_id=${orgId}`,
+      `https://www.zohoapis.com/books/v3/customerpayments?organization_id=${orgId}`,
       {
-        customer_id: '', // Will be populated by Zoho from invoice
-        invoice_id: invoiceId,
-        amount: String(amount),
+        customer_id: invoice.customer_id,
         payment_mode: paymentMode || 'bank_transfer',
+        amount: String(amount),
+        date: paymentDate || new Date().toISOString().split('T')[0],
         reference_number: transactionId,
-        payment_date: paymentDate || new Date().toISOString().split('T')[0]
-      },
+        invoices: [
+            {
+            invoice_id: invoiceId,
+            amount_applied: String(amount)
+            }
+        ]
+        },
       {
         timeout: 10000,
         headers: {
@@ -277,19 +286,22 @@ const createCreditNote = async ({ invoiceId, amount, reason }) => {
     const token = await getValidAccessToken();
     const orgId = process.env.ZOHO_ORGANIZATION_ID;
 
+    const invoice = await getInvoice(invoiceId);
+
     const response = await axios.post(
-      `https://books.zoho.com/api/v3/creditnotes?organization_id=${orgId}`,
-      {
-        invoice_id: invoiceId,
+    `https://www.zohoapis.com/books/v3/creditnotes?organization_id=${orgId}`,
+    {
+        customer_id: invoice.customer_id,
         line_items: [
-          {
+        {
             item_name: reason || 'Refund',
             quantity: 1,
             rate: String(amount)
-          }
+        }
         ],
-        notes: reason || 'Refund'
-      },
+        notes: reason || 'Refund',
+        reference_number: `REFUND-${invoiceId}`
+    },
       {
         timeout: 10000,
         headers: {

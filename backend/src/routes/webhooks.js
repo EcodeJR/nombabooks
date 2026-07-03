@@ -51,12 +51,8 @@ router.post(
       // ===== IDEMPOTENCY CHECK =====
       // Check if this exact event has already been processed
       const isDuplicate = transaction.webhookEvents.some(
-        evt =>
-          evt.event === event &&
-          Math.abs(
-            new Date(evt.receivedAt) - new Date()
-          ) < 5000 // Within 5 seconds
-      );
+        evt => evt.event === event
+     );
 
       if (isDuplicate) {
         console.log(`[Webhook] Duplicate event detected: ${event}. Ignoring.`);
