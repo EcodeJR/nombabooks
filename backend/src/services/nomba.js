@@ -61,17 +61,19 @@ const getNombaToken = async () => {
     const credentials = await getNombaCredentials();
 
     const response = await axios.post(
-      `${baseUrl}/v1/auth/token/issue`,
-      {
+    `${baseUrl}/v1/auth/token/issue`,
+    {
         grant_type: 'client_credentials',
         client_id: credentials.clientId,
-        client_secret: credentials.clientSecret,
-        accountId: credentials.accountId
-      },
-      {
+        client_secret: credentials.clientSecret
+    },
+    {
         timeout: 10000,
-        headers: { 'Content-Type': 'application/json' }
-      }
+        headers: {
+        'Content-Type': 'application/json',
+        'accountId': credentials.accountId
+        }
+    }
     );
 
     const responseData = response.data?.data || response.data;
