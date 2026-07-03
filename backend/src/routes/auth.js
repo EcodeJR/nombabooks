@@ -78,6 +78,8 @@ router.get('/zoho/callback', async (req, res, next) => {
         }
       }
     );
+    console.log('Zoho token response status:', response.status);
+    console.log('Zoho token response body:', response.data);
 
     const { access_token, refresh_token, expires_in } = response.data;
 
@@ -110,7 +112,7 @@ router.get('/zoho/callback', async (req, res, next) => {
       error.message;
 
     console.error(`[Auth] Zoho callback failed: ${zohoMessage}`);
-
+    
     next({
       status: error.response?.status || 500,
       message: `Zoho OAuth callback failed: ${zohoMessage}`
