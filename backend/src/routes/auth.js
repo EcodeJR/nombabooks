@@ -27,7 +27,8 @@ router.get('/zoho/auth', (req, res, next) => {
       `&client_id=${clientId}` +
       `&response_type=code` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&access_type=offline`;
+      `&access_type=offline` +
+      `&prompt=consent`;
 
     console.log('[Auth] Redirecting to Zoho OAuth');
     res.redirect(authUrl);
@@ -112,7 +113,7 @@ router.get('/zoho/callback', async (req, res, next) => {
       error.message;
 
     console.error(`[Auth] Zoho callback failed: ${zohoMessage}`);
-    
+
     next({
       status: error.response?.status || 500,
       message: `Zoho OAuth callback failed: ${zohoMessage}`
