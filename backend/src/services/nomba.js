@@ -104,6 +104,7 @@ const createCheckoutOrder = async ({ amount, customerEmail, invoiceId, callbackU
 
     const baseUrl = getBaseUrl();
     const orderReference = uuidv4();
+    const credentials = await getNombaCredentials();
     const headers = await getAuthHeaders();
 
     const response = await axios.post(
@@ -119,7 +120,10 @@ const createCheckoutOrder = async ({ amount, customerEmail, invoiceId, callbackU
       },
       {
         timeout: 10000,
-        headers
+        headers: {
+            ...headers,
+            'accountId': credentials.accountId
+        }
       }
     );
 
